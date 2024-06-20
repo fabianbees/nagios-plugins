@@ -249,7 +249,7 @@ static unsigned short icmp_pkt_size = DEFAULT_PING_DATA_SIZE + ICMP_MINLEN;
 
 static unsigned int icmp_sent = 0, icmp_recv = 0, icmp_lost = 0;
 #define icmp_pkts_en_route (icmp_sent - (icmp_recv + icmp_lost))
-static unsigned short targets_down = 0, targets = 0, packets = 0;
+static unsigned short targets_down = 0, targets = 0, packets = 0, delay = 0;
 #define targets_alive (targets - targets_down)
 static unsigned int retry_interval, pkt_interval, target_interval;
 static int icmp_sock, tcp_sock, udp_sock, status = STATE_OK;
@@ -571,7 +571,7 @@ int main(int argc, char **argv) {
   /* parse the arguments */
   for (i = 1; i < argc; i++) {
     while ((arg = getopt(argc, argv,
-                         "vhVw:c:n:p:t:H:s:i:b:f:F:I:l:m:P:R:J:S:M:O:64")) != EOF) {
+                         "vhVw:c:n:p:D:t:H:s:i:b:f:F:I:l:m:P:R:J:S:M:O:64")) != EOF) {
       long size;
       switch (arg) {
       case 'v':
@@ -618,6 +618,10 @@ int main(int argc, char **argv) {
       case 'n':
       case 'p':
         packets = strtoul(optarg, NULL, 0);
+        break;
+
+      case 'D':
+        delay = strtoul(optarg, NULL, 0);
         break;
 
       case 't':
@@ -852,14 +856,15 @@ int main(int argc, char **argv) {
   gettimeofday(&prog_start, &tz);
   max_completion_time =
       ((targets * packets * pkt_interval) + (targets * target_interval)) +
-      (targets * packets * crit.rta) + crit.rta;
+      (targets * packets * crit.rta) + crit.rta +
+      (packets * delay * 1000000);
 
   if (debug) {
-    printf("packets: %u, targets: %u\n"
+    printf("packets: %u, delay: %u, targets: %u\n"
            "target_interval: %0.3f, pkt_interval %0.3f\n"
            "crit.rta: %0.3f\n"
            "max_completion_time: %0.3f\n",
-           packets, targets, (float)target_interval / 1000,
+           packets, delay, targets, (float)target_interval / 1000,
            (float)pkt_interval / 1000, (float)crit.rta / 1000,
            (float)max_completion_time / 1000);
   }
@@ -935,6 +940,10 @@ static void run_checks() {
       result = wait_for_reply(icmp_sock, target_interval);
     }
     result = wait_for_reply(icmp_sock, pkt_interval * targets);
+
+    if (delay > 0) {
+      sleep(delay);
+    }
   }
 
   if (icmp_pkts_en_route && targets_alive) {
@@ -2114,6 +2123,9 @@ void print_help(void) {
   printf(" %s\n", "-p");
   printf("    %s", _("number of packets to send (currently "));
   printf("%u)\n", packets);
+  printf(" %s\n", "-D");
+  printf("    %s", _("delay between packets in seconds (currently "));
+  printf("%u)\n", delay);
   printf(" %s\n", "-i");
   printf("    %s", _("max packet interval (currently "));
   printf("%0.3fms)\n", (float)pkt_interval / 1000);
